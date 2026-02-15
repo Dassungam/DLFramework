@@ -1,0 +1,25 @@
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.venv/
+env/
+geoai_env/
+
+# Data & Models (WICHTIG für GeoAI)
+data/
+outputs/
+models/*.pth
+models/*.h5
+*.geotiff
+*.tif
+
+# IDE
+.vscode/
+*.code-workspace
+
+#Alte Dateien & Skripte
+/Old
