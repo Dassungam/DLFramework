@@ -11,7 +11,7 @@ import argparse
 import torch
 from torch.utils.data import DataLoader, random_split
 import torch.optim as optim
-from src.data.datamodule import GeoDataModule # <--- Neu
+from src.data.datamodule import GeoDataModule
 
 # Pfad-Hack
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
