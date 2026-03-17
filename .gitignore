@@ -23,3 +23,5 @@ models/*.h5
 
 #Alte Dateien & Skripte
 /Old
+
+wandb/

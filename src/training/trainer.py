@@ -6,6 +6,7 @@ import os
 import torch
 from tqdm import tqdm
 import numpy as np
+import wandb
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, criterion, optimizer, config):
@@ -27,7 +28,12 @@ class Trainer:
         # Logging
         self.best_val_loss = float('inf')
         self.project_dir = os.getcwd() # Oder aus Config
-        self.save_path = os.path.join(self.project_dir, "models", "best_model.pth")
+        
+        # Dynamically generate save path based on experiment name
+        experiment_name = self.cfg.get('experiment_name', 'run_1')
+        models_dir = os.path.join(self.project_dir, "models")
+        os.makedirs(models_dir, exist_ok=True)
+        self.save_path = os.path.join(models_dir, f"{experiment_name}_best.pth")
 
     def fit(self):
         """Startet den kompletten Trainings-Prozess."""
@@ -46,6 +52,9 @@ class Trainer:
                 print(f"   [Save] Neuer Bestwert! ({self.best_val_loss:.4f} -> {val_loss:.4f})")
                 self.best_val_loss = val_loss
                 torch.save(self.model.state_dict(), self.save_path)
+                
+                # [Note] Skipping wandb artifact upload to keep weights local and avoid big file transfers
+                pass
             
             print(f"Epoche {epoch}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
@@ -55,7 +64,9 @@ class Trainer:
         
         pbar = tqdm(self.train_loader, desc=f"Train Ep {epoch}", leave=False)
         
-        for batch in pbar:
+        log_every_n_steps = 50
+        
+        for step, batch in enumerate(pbar):
             images = batch['image'].to(self.device)
             masks = batch['mask'].to(self.device)
             
@@ -77,7 +88,17 @@ class Trainer:
             running_loss += loss.item()
             pbar.set_postfix({'loss': f'{loss.item():.4f}'})
             
-        return running_loss / len(self.train_loader)
+            if step > 0 and step % log_every_n_steps == 0:
+                current_lr = self.optimizer.param_groups[0]['lr']
+                wandb.log({
+                    "train/loss_step": loss.item(),
+                    "train/learning_rate": current_lr,
+                    "epoch": epoch
+                })
+            
+        epoch_train_loss = running_loss / len(self.train_loader)
+        wandb.log({"train/loss_epoch": epoch_train_loss, "epoch": epoch}, commit=False)
+        return epoch_train_loss
 
     def _validate(self, epoch):
         self.model.eval()
@@ -98,6 +119,9 @@ class Trainer:
                 
                 running_loss += loss.item()
             
-            # Wir brechen die innere Schleife hier ab, da 'loader' iteriert wurde
-            # (Kleine Logik-Korrektur für sauberen Code)
-            return running_loss / len(loader)
+            val_loss = running_loss / len(loader)
+            wandb.log({
+                "val/loss": val_loss,
+                "epoch": epoch
+            })
+            return val_loss

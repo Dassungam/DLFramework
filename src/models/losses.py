@@ -35,26 +35,3 @@ class BCEDiceLoss(nn.Module):
         loss_bce = self.bce(inputs, targets)
         loss_dice = self.dice(inputs, targets)
         return self.bce_weight * loss_bce + (1 - self.bce_weight) * loss_dice
-
-def get_loss_function(config):
-    mode = config['data'].get('mask_type', 'binary')
-    loss_name = config['training'].get('loss_function', 'bce') # Neu: Aus Config lesen
-    
-    print(f"Lade Loss-Funktion: {loss_name} (Mode: {mode})")
-
-    if mode == 'binary':
-        if loss_name == 'dice':
-            return DiceLoss()
-        elif loss_name == 'bce_dice':
-            return BCEDiceLoss(bce_weight=0.5) # 50% BCE, 50% Dice
-        else:
-            return nn.BCEWithLogitsLoss()
-    
-    elif mode == 'regression':
-        return nn.MSELoss()
-    
-    elif mode == 'multiclass':
-        return nn.CrossEntropyLoss()
-    
-    else:
-        raise ValueError(f"Unbekannter Modus: {mode}")

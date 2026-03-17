@@ -6,19 +6,20 @@ Teil von: GeoAI_Framework
 import os
 import sys
 
+# Pfad-Hack für Framework-Importe
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import yaml
 import argparse
 import torch
 from torch.utils.data import DataLoader, random_split
 import torch.optim as optim
+import wandb
+
 from src.data.datamodule import GeoDataModule
-
-# Pfad-Hack
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 from src.data.dataset import GeoSpatialDataset
 from src.models.factory import get_model
-from src.models.losses import get_loss_function
+from src.models.loss_factory import get_loss_function
 from src.training.trainer import Trainer
 
 def main(config_path):
@@ -29,6 +30,22 @@ def main(config_path):
         config = yaml.safe_load(f)
         
     print(f"--- Starte Projekt: {config['project_name']} ---")
+    
+    # 1. Start lean wandb run
+    wandb.init(
+        project=config.get("project_name", "GeoAI_Framework"),
+        entity=config.get("wandb_entity"),
+        name=config.get("experiment_name", "run_1"),
+        config={
+            "learning_rate": config["training"]["learning_rate"],
+            "batch_size": config["training"]["batch_size"],
+            "epochs": config["training"]["epochs"],
+            "optimizer": config["training"].get("optimizer", "adamw"),
+            "architecture": config["model"].get("architecture", "Unet"),
+            "encoder": config["model"].get("encoder", "mit_b5"),
+            "loss_function": config["training"].get("loss_function", "bce_dice")
+        }
+    )
     
     # 1. Splits berechnen
     # (Wir müssen hier kurz tricksen, da wir Transforms VOR dem Split zuweisen müssen,
@@ -45,6 +62,9 @@ def main(config_path):
     model = get_model(config)
     criterion = get_loss_function(config)
     optimizer = optim.AdamW(model.parameters(), lr=config['training']['learning_rate'])
+    
+    # Optional: Watch model topology only
+    wandb.watch(model, log=None)
 
     # 3. Start
     trainer = Trainer(
@@ -57,6 +77,10 @@ def main(config_path):
     )
     
     trainer.fit()
+    
+    print("\n--- Training finished successfully. Closing WandB run... ---")
+    wandb.finish()
+    print("--- WandB closed. Process exiting. ---")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

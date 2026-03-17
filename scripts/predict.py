@@ -14,14 +14,12 @@ from tqdm import tqdm
 from rasterio.windows import Window
 
 # Pfad-Setup für Framework-Importe
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.models.factory import get_model
 from src.data.preprocessing import robust_normalize
 
-# --- KONFIGURATION ---
-TILE_SIZE = 1024  # Größe der Kacheln für die Grafikkarte (1024x1024 passt gut auf RTX 5070)
-OVERLAP = 0       # (Optional) Überlappung, hier erstmal 0 für Speed
+# --- KONFIGURATION wird nun dynamisch aus der Config geladen ---
 
 def predict_large_image(model, img_path, out_path, device, config):
     """
@@ -30,11 +28,17 @@ def predict_large_image(model, img_path, out_path, device, config):
     """
     print(f"--- Starte Vorhersage für: {img_path} ---")
     
-    # Modus aus Config lesen
+    # Modus und Tiling aus Config lesen
     mode = config['data'].get('mask_type', 'binary')
     norm_max = config['data'].get('normalization_max', 3000.0)
     
+    pred_cfg = config.get('prediction', {})
+    tile_size = pred_cfg.get('tile_size', 512)
+    overlap = pred_cfg.get('overlap', 64)
+    stride = tile_size - overlap
+    
     with rasterio.open(img_path) as src:
+        print(f"Image Resolution: {src.res[0]:.4f} x {src.res[1]:.4f} units/pixel")
         meta = src.meta.copy()
         
         # Output-Metadaten anpassen je nach Modus
@@ -58,19 +62,20 @@ def predict_large_image(model, img_path, out_path, device, config):
         
         with rasterio.open(out_path, 'w', **meta) as dst:
             
-            for y in tqdm(range(0, height, TILE_SIZE), desc="Processing Tiles"):
-                for x in range(0, width, TILE_SIZE):
+            for y in tqdm(range(0, height, stride), desc="Processing Tiles"):
+                for x in range(0, width, stride):
                     
-                    # 1. Fenster definieren
-                    w_width = min(TILE_SIZE, width - x)
-                    w_height = min(TILE_SIZE, height - y)
+                    # 1. Fenster definieren (darf nicht über das Bild hinausgehen)
+                    w_width = min(tile_size, width - x)
+                    w_height = min(tile_size, height - y)
                     window = Window(x, y, w_width, w_height)
                     
                     # 2. Daten lesen
-                    img_data = src.read([1, 2, 3, 4], window=window)
+                    bands = list(range(1, src.count + 1))
+                    img_data = src.read(bands, window=window)
                     
-                    # 3. Padding
-                    pad_img = np.zeros((4, TILE_SIZE, TILE_SIZE), dtype=img_data.dtype)
+                    # 3. Padding (falls Fenster kleiner als tile_size)
+                    pad_img = np.zeros((src.count, tile_size, tile_size), dtype=img_data.dtype)
                     pad_img[:, :w_height, :w_width] = img_data
                     
                     # --- WICHTIG: Normalisierung wie im Training ---
@@ -104,7 +109,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/default.yaml", help="Pfad zur Config")
     parser.add_argument("--input_image", required=True, help="Pfad zum Test-Bild (image.tif)")
-    parser.add_argument("--input_mask", required=True, help="Pfad zur Test-Maske (mask.tif)")
     parser.add_argument("--output", default="prediction.tif", help="Pfad für output Tiff")
     parser.add_argument("--model_path", default="models/best_model.pth", help="Pfad zum trainierten Modell")
     

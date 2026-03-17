@@ -1,31 +1,28 @@
 project_name: Hamburg_Segmentation
-experiment_name: unet_resnet18_water_v1
+experiment_name: unetpp_efficientnet-b0_water_v1
+wandb_entity: magnusmichel-universit-t-w-rzburg
 system:
   device: cuda
   num_workers: 8
   seed: 42
 data:
-  train_dir: data/hamburg/processed/Input
+  train_dir: data
   val_split: 0.1
-  input_channels:
-  - 1
-  - 2
-  - 3
-  - 4
   img_size: 256
   mask_type: binary
   normalization_max: 4000
 model:
-  architecture: "Unet"  # Sieht den Kontext besser
-  encoder: "mit_b5"     # ResNeSt (Split-Attention) ist extrem gut für Satellitenbilder
-  weights: "imagenet"
-  in_channels: 4
-  classes: 1
+  architecture: UnetPlusPlus
+  encoder: efficientnet-b0
+  weights: imagenet
   activation: null
 training:
   batch_size: 16
-  epochs: 50
-  learning_rate: 0.00006
-  loss_function: "bce_dice"
+  epochs: 10
+  learning_rate: 6.0e-05
+  loss_function: bce_dice
   optimizer: adamw
   use_amp: true
+prediction:
+  tile_size: 256
+  overlap: 64
