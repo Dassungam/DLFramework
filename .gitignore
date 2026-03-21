@@ -25,3 +25,4 @@ models/*.h5
 /Old
 
 wandb/
+models/

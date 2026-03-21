@@ -81,11 +81,21 @@ class Trainer:
             
             # Backward Pass mit Scaler (verhindert Underflow bei float16)
             self.scaler.scale(loss).backward()
+            
+            # --- NEU: Gradient Clipping ---
+            # Verhindert "Exploding Gradients", was zu NaNs führen kann.
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            
             self.scaler.step(self.optimizer)
             self.scaler.update()
             
-            # Statistik
-            running_loss += loss.item()
+            # Statistik & Safety Check
+            loss_val = loss.item()
+            if np.isnan(loss_val):
+                print(f"   [Warning] NaN Loss detected at step {step}!")
+            
+            running_loss += loss_val
             pbar.set_postfix({'loss': f'{loss.item():.4f}'})
             
             if step > 0 and step % log_every_n_steps == 0:

@@ -1,0 +1,29 @@
+data:
+  datasets:
+  - name: Region_1
+    features: data/features_region_1.tif
+    target: data/target_region_1.tif
+  max_pixels_per_class: 500
+  input_channels:
+  - 1
+  - 2
+  features: data/features_region_1.tif
+  target: data/target_region_1.tif
+  mean:
+  - 893.361001956159
+  - 3067.227376637324
+  std:
+  - 354.6114178823318
+  - 914.6780576839174
+  mask_type: regression
+  target_mean: 0.5245909094810486
+  target_std: 0.19364483654499054
+model:
+  architecture: Gradient Boosting
+  experiment_name: rf_test_08
+  in_channels: 2
+training:
+  max_depth: 50
+  n_estimators: 500
+  task_type: regression
+  val_split: 0.15

@@ -8,13 +8,14 @@ Entscheidet, welche Loss-Funktion genutzt wird, abhängig vom Vorhersagetyp
 
 import torch.nn as nn
 from .losses import DiceLoss, BCEDiceLoss
+from src.utils.config_utils import get_task_mode
 
 def get_loss_function(config):
     """
     Gibt die Fehlerfunktion zurück, abhängig davon ob klassifiziert
     (Binär, Multiklassen) oder regrediert wird.
     """
-    mode = config['data'].get('mask_type', 'binary')
+    mode = get_task_mode(config)
     loss_name = config['training'].get('loss_function', 'bce')
     
     print(f"Lade Loss-Funktion: {loss_name} (Prediction-Typ: {mode})")
@@ -30,6 +31,8 @@ def get_loss_function(config):
     
     # 2. Regression (Kontinuierliche Werte)
     elif mode == 'regression':
+        if loss_name == 'mae':
+            return nn.L1Loss()
         return nn.MSELoss()
     
     # 3. Multiclass Klassifikation (Mehrere Klassen)

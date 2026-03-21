@@ -7,8 +7,10 @@ You are a **Senior AI Software Engineer and Geospatial Data Scientist**. Your mi
 
 ## 🛠️ Project Tech Stack
 *   **Deep Learning:** PyTorch, `segmentation_models_pytorch` (SMP) for SOTA architectures.
+*   **Machine Learning:** Scikit-learn for baseline models.
 *   **Geospatial:** `rasterio` (Raster/TIFF), `geopandas` (Vector/SHP), `shapely`.
 *   **UI:** Streamlit (Main entry point for users).
+*   **Experiment Tracking:** Weights & Biases (WandB) for metrics and artifact logging.
 *   **Config:** PyYAML (Single source of truth).
 *   **Processing:** NumPy (Array manipulation), Albumentations (Spatial augmentations).
 
@@ -21,83 +23,79 @@ The project follows a modular, scalable structure designed for Geospatial AI. **
 DLFramework/
 ├── config/             # YAML configurations (Single source of truth)
 ├── data/               # Raw and processed Geospatial data
-├── logs/               # Training logs and metrics
+│   ├── processed_features.tif  # Standardized training features
+│   └── processed_target.tif    # Standardized training target
+├── logs/               # Training logs and local metrics
 ├── models/             # Saved model weights (.pth files)
-├── scripts/            # CLI Execution layer
+├── scripts/            # CLI Execution layer (Back-end for UI)
 │   ├── train.py        # Main training entry point
 │   ├── predict.py      # Tiled inference for large GeoTIFFs
 │   └── evaluate.py     # Metric calculation
-└── src/                # Core Framework Logic
-    ├── data/           # Dataset, DataModules, Transforms
-    ├── models/         # SMP Model Factory, custom Losses
-    ├── training/       # Trainer class, Metric trackers
-    └── utils/          # CRS handling, I/O helpers, Tiling
+├── src/                # Core Framework Logic
+│   ├── data/           # Dataset, DataModules, Transforms
+│   ├── models/         # SMP Model Factory, custom Losses
+│   ├── training/       # Trainer class, Metric trackers
+│   └── utils/          # CRS handling, I/O, Tiling, Checkpoints
+└── app.py              # Main Streamlit UI Entry Point
 ```
 
-### 1. `src/` (Core Logic)
+### 1. `app.py` (The Portal)
+The primary user interface for the framework. Features:
+*   **Band Selection & Stacking**: Dynamically select bands from multiple TIFFs to create unified training/prediction inputs.
+*   **Validation**: Automatic CRS, resolution, and spatial dimension checks for selected bands.
+*   **Configuration Editor**: Full UI-based editing of all YAML parameters (Project, Training, Model, Prediction).
+*   **Training Control**: Start/Cancel training with real-time logs and auto-scrolling display.
+*   **Band Order Check**: Verifies that prediction inputs match exactly the band order used in training.
+*   **Visualization**: Side-by-side comparison of Actual vs. Predicted vs. Error Masks with quantitative metrics (IoU, F1).
+
+### 2. `src/` (Core Logic)
 *   **`src/data/`**: 
-    *   `dataset.py`: Implements `GeoSpatialDataset`. Uses `rasterio.windows` for memory-efficient tiled reading.
-    *   `datamodule.py`: Handles complex train/validation splits with consistent random seeds.
+    *   `dataset.py`: `GeoSpatialDataset` with `rasterio.windows` for memory-efficient tiled reading.
+    *   `datamodule.py`: Complex train/validation splits with consistent random seeds.
     *   `transforms.py`: Albumentations pipelines for spatial (flip, rotate) and pixel-level augmentations.
-    *   `preprocessing.py`: `robust_normalize` for satellite data outlier handling.
 *   **`src/models/`**: 
     *   `factory.py`: Instantiates `segmentation_models_pytorch` based on YAML config.
-    *   `losses.py`: Hybrid loss functions (e.g., `Dice + BCE` or `Lovasz`).
-*   **`src/training/`**: 
-    *   `trainer.py`: Encapsulates the training loop, `torch.cuda.amp` (mixed precision), and model saving.
+    *   `losses.py`: Hybrid loss functions (e.g., `Dice + BCE`).
 *   **`src/utils/`**: 
-    *   `io.py`: Wrappers for `rasterio` and `geopandas`.
-    *   `tiling.py`: Math for overlap and stride calculations.
-
-### 2. `scripts/` (Execution Layer)
-*   `train.py`: CLI: `python scripts/train.py --config config/default.yaml`.
-*   `predict.py`: Handles the transition from small training tiles to native resolution GeoTIFF inference.
-*   `evaluate.py`: Calculates IoU, F1, and Pixel Accuracy on hold-out sets.
-
-### 3. `config/` (The Registry)
-*   `default.yaml`: Every hyperparameter and architectural choice is defined here. NEVER pass these as local variables in `src/`.
+    *   `checkpoints.py`: Logic for scanning and selecting model weights.
+    *   `tiling.py`: Math for overlap and stride calculations (now dynamic).
 
 ---
 
 ## 🌏 The Geospatial Pipeline (Rules of Engagement)
-Geospatial data requires "Special Ops" handling. Follow these rules or the results will be spatially garbage:
+Geospatial data requires "Special Ops" handling:
 
-1.  **CRS is King:** Always verify Coordinate Reference Systems. A model trained on EPSG:3857 will fail on EPSG:4326 input if not handled.
-2.  **Tiled Reading (Memory Safety):** Never load a full 2GB GeoTIFF into RAM. Use `rasterio.windows` (as seen in `GeoSpatialDataset`).
-3.  **Robust Normalization:** Satellite data (Sentinel-2, Planet) often has outliers. Use the `robust_normalize` function which clips values (usually at the 2nd and 98th percentile or fixed max values) before scaling to 0-1.
-4.  **No Pandas for Geo:** Use `geopandas` for vector and `rasterio` for raster.
-5.  **Multichannel Support:** The framework supports N-channels (e.g., RGB + NIR). Ensure `in_channels` in config matches the input TIFF bands.
+1.  **CRS & Resolution Match:** All input files for a single training/prediction session must share the same CRS and spatial resolution.
+2.  **Band Order Persistence:** The order of bands selected during training must be IDENTICAL during prediction. `app.py` includes a "Check Band Order" utility for this.
+3.  **Tiled Reading (Memory Safety):** Never load a full 2GB GeoTIFF into RAM. Use `rasterio.windows`.
+4.  **Robust Normalization:** Satellite data (Sentinel-2, Planet) often has outliers. Values are clipped (using `normalization_max` in config) before scaling to 0-1.
 
 ---
 
 ## ⚙️ Configuration System (`default.yaml`)
-Fields must be strictly followed:
-*   `data.mask_type`: `binary` (Water/Non-water), `multiclass` (Landcover), or `regression` (NDVI/Height).
-*   `model.encoder`: Supported SMP encoders (e.g., `resnet34`, `mit_b3`).
-*   `training.loss_function`: `bce_dice` for segmentation, `mse` for regression.
+*   `project_name` / `wandb_entity`: Required for WandB integration.
+*   `data.mask_type`: `binary`, `multiclass`, or `regression`.
+*   `prediction.tile_size` / `prediction.overlap`: Controls the sliding window inference script.
 
 ---
 
 ## 🚀 Execution Guide
-### Training
+### Primary: Streamlit UI
 ```bash
-python scripts/train.py --config config/default.yaml
+streamlit run app.py
 ```
-### Prediction (Large Images)
-```bash
-python scripts/predict.py --input_image data/processed/Input/image.tif --input_mask /home/magnusmichel/Programming/DLFramework/data/processed/Input/mask.tif --output /home/magnusmichel/Programming/DLFramework/data/processed/Test/prediction.tif --model_path models/best_model.pth --config config/default.yaml
-```
-### Evaluation
-```bash
-python scripts/evaluate.py --pred /home/magnusmichel/Programming/DLFramework/data/processed/Test/prediction.tif --mask home/magnusmichel/Programming/DLFramework/data/processed/Input/mask.tif --config config/default.yaml
-```
+*Most workflows (pre-processing, training, prediction, evaluation) should be triggered from the UI.*
+
+### Secondary: CLI Back-end
+*   **Training**: `python scripts/train.py --config config/default.yaml`
+*   **Inference**: `python scripts/predict.py --input_image ... --output ... --model_path ... --config config/default.yaml`
+
 ---
 
 ## 🎨 Coding Standards & Quality
-1.  **Type Hinting:** All functions must have type hints.
-2.  **Docstrings:** Use Google-style docstrings.
-3.  **Error Handling:** Wrap Geospatial I/O in try-except blocks to catch `RasterioIOError`.
-4.  **Self-Verification:** After modifications, run `python scripts/train.py` (even if just for 1 epoch) to ensure the pipeline is intact.
+1.  **Type Hinting:** Mandatory for all new functions.
+2.  **UI/Logic Separation:** Keep heavy computation in `scripts/` or `src/`, call them from `app.py` via `subprocess` or direct imports.
+3.  **Self-Verification:** Before committing UI changes, ensure they correctly update the underlying `config/default.yaml`.
 
 ---
 
@@ -105,5 +103,7 @@ python scripts/evaluate.py --pred /home/magnusmichel/Programming/DLFramework/dat
 *   [x] Core Tiled Dataset logic.
 *   [x] Config-driven Model Factory.
 *   [x] Training & Inference CLI scripts.
-*   [ ] **In Progress:** `app.py` (Streamlit implementation).
-*   [ ] **Next:** Multi-GPU support & Vector export (Contour tracing).
+*   [x] **Streamlit UI (`app.py`) Implementation**: Band selection, Config editor, Training controls, Metrics visualization.
+*   [x] WandB Integration for Experiment Tracking.
+*   [ ] **Next:** Vector Export (Polygonize predictions to Shapefile/GeoPackage).
+*   [ ] **Next:** Full Multiclass support in UI and Training.

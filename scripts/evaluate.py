@@ -13,6 +13,7 @@ import numpy as np
 import argparse
 import yaml
 from tqdm import tqdm
+from src.utils.config_utils import get_task_mode
 
 def calculate_metrics_from_arrays(p, m, mode):
     """
@@ -25,13 +26,57 @@ def calculate_metrics_from_arrays(p, m, mode):
         if np.any(valid_mask):
             diff = p[valid_mask] - m[valid_mask]
             mse = np.mean(diff ** 2)
-            metrics['MSE'] = mse
-            metrics['RMSE'] = np.sqrt(mse)
+            metrics['MSE'] = float(mse)
+            metrics['RMSE'] = float(np.sqrt(mse))
+            # R2 Score
+            ss_res = np.sum((m[valid_mask] - p[valid_mask])**2)
+            ss_tot = np.sum((m[valid_mask] - np.mean(m[valid_mask]))**2)
+            metrics['R2'] = float(1 - (ss_res / ss_tot)) if ss_tot > 0 else 0.0
         else:
             metrics['MSE'] = None
             metrics['RMSE'] = None
+            metrics['R2'] = None
             
-    else: # segmentation
+    elif mode in ['multiclass', 'classification']:
+        unique_classes = np.unique(m)
+        num_classes = len(unique_classes)
+        
+        per_class_metrics = {}
+        total_iou = 0
+        total_acc_pixels = (p == m).sum()
+        total_pixels = m.size
+        
+        for cls in unique_classes:
+            m_cls = (m == cls)
+            p_cls = (p == cls)
+            
+            tp = np.logical_and(p_cls, m_cls).sum()
+            fp = np.logical_and(p_cls, ~m_cls).sum()
+            fn = np.logical_and(~p_cls, m_cls).sum()
+            
+            iou = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else 1.0
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+            
+            per_class_metrics[int(cls)] = {
+                'IoU': float(iou),
+                'Precision': float(precision),
+                'Recall': float(recall),
+                'F1-Score': float(f1),
+                'TP': int(tp),
+                'FP': int(fp),
+                'FN': int(fn)
+            }
+            total_iou += iou
+            
+        metrics = {
+            'Overall Accuracy': float(total_acc_pixels / total_pixels),
+            'mIoU': float(total_iou / num_classes),
+            'Per-Class': per_class_metrics
+        }
+    
+    elif mode == 'binary': 
         m_bin = (m > 0).astype(np.uint8)
         p_bin = (p > 0).astype(np.uint8)
         
@@ -48,14 +93,18 @@ def calculate_metrics_from_arrays(p, m, mode):
         iou = intersection / union if union > 0 else 1.0
         
         metrics = {
-            'IoU': iou,
-            'Precision': precision,
-            'Recall': recall,
-            'F1-Score': f1_score,
+            'IoU': float(iou),
+            'Precision': float(precision),
+            'Recall': float(recall),
+            'F1-Score': float(f1_score),
             'TP': int(tp),
             'FP': int(fp),
             'FN': int(fn)
         }
+        
+    else: # Fallback / Unknown
+        print(f"Unknown mode: {mode}. No metrics calculated.")
+        metrics = {}
         
     return metrics
 
@@ -65,7 +114,7 @@ def evaluate_metrics(pred_path, mask_path, config):
     """
     print(f"--- Starte Evaluation ---")
     
-    mode = config['data'].get('mask_type', 'binary')
+    mode = get_task_mode(config)
     
     # Check if files fit in memory
     try:

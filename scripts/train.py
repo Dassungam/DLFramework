@@ -29,13 +29,25 @@ def main(config_path):
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
         
-    print(f"--- Starte Projekt: {config['project_name']} ---")
+    print(f"--- Starte Projekt: {config['project_name']} ---", flush=True)
     
     # 1. Start lean wandb run
+    wandb_cfg = config.get("training", {})
+    wandb_mode = wandb_cfg.get("wandb_mode", "online")
+    
+    # Check if we are logged in, otherwise default to offline to avoid blocking
+    if wandb_mode == "online":
+        has_key = os.environ.get("WANDB_API_KEY") is not None
+        has_netrc = os.path.exists(os.path.expanduser("~/.netrc"))
+        if not (has_key or has_netrc):
+            print("WandB authentication not found (no API key or .netrc). Switching to OFFLINE mode.", flush=True)
+            wandb_mode = "offline"
+
     wandb.init(
         project=config.get("project_name", "GeoAI_Framework"),
         entity=config.get("wandb_entity"),
         name=config.get("experiment_name", "run_1"),
+        mode=wandb_mode,
         config={
             "learning_rate": config["training"]["learning_rate"],
             "batch_size": config["training"]["batch_size"],
@@ -46,7 +58,7 @@ def main(config_path):
             "loss_function": config["training"].get("loss_function", "bce_dice")
         }
     )
-    
+    print(f"WandB initialized in {wandb_mode} mode.", flush=True)
     # 1. Splits berechnen
     # (Wir müssen hier kurz tricksen, da wir Transforms VOR dem Split zuweisen müssen,
     # aber Train und Val unterschiedliche Transforms brauchen.

@@ -1,5 +1,5 @@
-project_name: Hamburg_Segmentation
-experiment_name: unetpp_efficientnet-b0_water_v1
+project_name: Land_Use_Class
+experiment_name: unetpp_efficientnet-b0_lanuse_v1
 wandb_entity: magnusmichel-universit-t-w-rzburg
 system:
   device: cuda
@@ -7,22 +7,39 @@ system:
   seed: 42
 data:
   train_dir: data
-  val_split: 0.1
+  val_split: 0.15
   img_size: 256
-  mask_type: binary
-  normalization_max: 4000
+  train_features: data/processed_features.tif
+  train_target: data/processed_target.tif
+  input_channels:
+  - 1
+  - 2
+  datasets:
+  - name: Region_1
+    features: data/features_region_1.tif
+    target: data/target_region_1.tif
+  mean:
+  - 893.361001956159
+  - 3067.227376637324
+  std:
+  - 354.6114178823318
+  - 914.6780576839174
+  target_mean: 0.5245909094810486
+  target_std: 0.19364483654499054
 model:
   architecture: UnetPlusPlus
   encoder: efficientnet-b0
   weights: imagenet
-  activation: null
+  activation: ''
+  in_channels: 2
 training:
   batch_size: 16
-  epochs: 10
+  epochs: 50
   learning_rate: 6.0e-05
-  loss_function: bce_dice
+  loss_function: cross_entropy
   optimizer: adamw
   use_amp: true
+  task_type: regression
 prediction:
   tile_size: 256
   overlap: 64

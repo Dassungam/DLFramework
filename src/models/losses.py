@@ -12,12 +12,12 @@ class DiceLoss(nn.Module):
         self.smooth = smooth
 
     def forward(self, logits, targets):
-        # Sigmoid, da wir mit Logits arbeiten
-        inputs = torch.sigmoid(logits)
+        # Create a mask of valid pixels (where target is not 255)
+        valid_mask = (targets != 255)
         
-        # Flatten (Batch, C, H, W) -> (Batch, -1)
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
+        # Filter inputs and targets
+        inputs = torch.sigmoid(logits)[valid_mask]
+        targets = targets[valid_mask]
         
         intersection = (inputs * targets).sum()
         dice = (2. * intersection + self.smooth) / (inputs.sum() + targets.sum() + self.smooth)
